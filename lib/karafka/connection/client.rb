@@ -33,9 +33,9 @@ module Karafka
         settings = ApiAdapter.consumption(consumer_group)
 
         if consumer_group.batch_fetching
-          kafka_consumer.each_batch(*settings) { |batch| yield(batch, :batch) }
+          kafka_consumer.each_batch(**settings[0]) { |batch| yield(batch, :batch) }
         else
-          kafka_consumer.each_message(*settings) { |message| yield(message, :message) }
+          kafka_consumer.each_message(**settings[0]) { |message| yield(message, :message) }
         end
       # @note We catch only the processing errors as any other are considered critical (exceptions)
       #   and should require a client restart with a backoff
@@ -97,11 +97,14 @@ module Karafka
       def kafka_consumer
         # @note We don't cache the connection internally because we cache kafka_consumer that uses
         #   kafka client object instance
+        adapter = ApiAdapter.consumer(consumer_group).try(:[],0)
         @kafka_consumer ||= Builder.call(consumer_group).consumer(
-          *ApiAdapter.consumer(consumer_group)
+          group_id: adapter[:group_id],
+          **adapter
         ).tap do |consumer|
           consumer_group.topics.each do |topic|
-            consumer.subscribe(*ApiAdapter.subscribe(topic))
+            topic_adapter = ApiAdapter.subscribe(topic)
+            consumer.subscribe(topic_adapter[0], **topic_adapter[1])
           end
         end
       rescue Kafka::ConnectionError
